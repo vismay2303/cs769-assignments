@@ -2,6 +2,7 @@ import time, random, numpy as np, argparse, sys, re, os
 from types import SimpleNamespace
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import classification_report, f1_score, recall_score, accuracy_score
@@ -38,12 +39,32 @@ class BertSentClassifier(torch.nn.Module):
                 param.requires_grad = True
 
         # todo
-        raise NotImplementedError
+        #print(config.hidden_size, config.hidden_size, config.hidden_dropout_prob)
+
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        self.d1 = nn.Linear(config.hidden_size, config.hidden_size)
+        self.d1_tan = nn.Tanh()
+        self.d2 = nn.Linear(config.hidden_size, config.num_labels)
+        self.log_softmax = nn.LogSoftmax(dim = 1)
+        self.relu = nn.ReLU()
+        #raise NotImplementedError
 
     def forward(self, input_ids, attention_mask):
         # todo
         # the final bert contextualize embedding is the hidden state of [CLS] token (the first token)
-        raise NotImplementedError
+        res = self.bert(input_ids, attention_mask)
+        first_token = res["pooler_output"]  # [batch_size, hidden_size]
+        drop = self.dropout(first_token)
+        h1 = self.d1(drop) # [batch_size, hidden_size]
+        h1 = self.relu(h1)
+        h2 = self.d2(h1)
+        scores = self.log_softmax(h2)
+        # h1t = self.d1_tan(h1)
+        # h1 = self.dropout(h1t)
+        # h2 = self.d2(h1)  # [batch_size, num_labels]
+        # scores = F.logsigmoid(h2)
+        return scores
+        #raise NotImplementedError
 
 # create a custom Dataset Class to be used for the dataloader
 class BertDataset(Dataset):
@@ -267,7 +288,6 @@ def get_args():
     parser.add_argument("--use_gpu", action='store_true')
     parser.add_argument("--dev_out", type=str, default="cfimdb-dev-output.txt")
     parser.add_argument("--test_out", type=str, default="cfimdb-test-output.txt")
-    parser.add_argument("--filepath", type=str, default=None)
 
     # hyper parameters
     parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)
@@ -281,8 +301,8 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    if args.filepath is None:
-        args.filepath = f'{args.option}-{args.epochs}-{args.lr}.pt' # save path
+    args.filepath = f'{args.option}-{args.epochs}-{args.lr}.pt' # save path
+    args.use_gpu = True
     seed_everything(args.seed)  # fix the seed for reproducibility
     train(args)
     test(args)
